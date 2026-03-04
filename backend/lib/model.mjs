@@ -54,6 +54,108 @@ function hasMockConflict(policyText) {
     (normalized.includes("immediately") && normalized.includes("do not") && normalized.includes("until"));
 }
 
+function firstWindow(text) {
+  const match = text.match(/\bwithin\s+\d+\s+(?:minutes?|hours?|days?|business\s+days?)\b/i);
+  return match ? match[0] : "Within stated policy SLA";
+}
+
+function buildMockActions(policyText, hasConflict, missingInfo) {
+  const normalized = policyText.toLowerCase();
+  const actions = [];
+
+  if (hasConflict) {
+    actions.push({
+      step: "Resolve conflicting timing clauses with compliance sign-off",
+      owner_role: "Compliance Lead",
+      due_window: "Immediately",
+      reason: "Contradictory constraints must be reconciled before execution to avoid policy violations.",
+    });
+  }
+
+  if (/\bself-harm|high-risk|urgent\b/i.test(policyText)) {
+    actions.push({
+      step: "Initiate clinical escalation and assign incident owner",
+      owner_role: "Operations Manager",
+      due_window: firstWindow(policyText),
+      reason: "High-severity referrals require rapid triage and accountable ownership.",
+    });
+  }
+
+  if (/\boutreach|contact\b/i.test(policyText)) {
+    actions.push({
+      step: "Execute outreach workflow and log each attempt",
+      owner_role: "Analyst",
+      due_window: firstWindow(policyText),
+      reason: "Outreach timing and traceability are explicitly required by policy text.",
+    });
+  }
+
+  if (/\bclinician|specialist|supervis(or|ory)\b/i.test(policyText)) {
+    actions.push({
+      step: "Coordinate required clinical or supervisory review",
+      owner_role: "Compliance Lead",
+      due_window: /\bwithin\s+\d+\s+(?:hours?|days?|business\s+days?)\b/i.test(policyText)
+        ? firstWindow(policyText)
+        : "Before final action handoff",
+      reason: "Policy references review/approval checkpoints that gate downstream actions.",
+    });
+  }
+
+  if (/\bpayer authorization|authorization\b/i.test(policyText)) {
+    actions.push({
+      step: "Verify authorization status and document outcome before case progression",
+      owner_role: "Analyst",
+      due_window: "Before outreach execution",
+      reason: "Authorization dependency is explicitly stated as a gating condition.",
+    });
+  }
+
+  if (/\bdocument|care log|crm|tracker|audit\b/i.test(policyText)) {
+    actions.push({
+      step: "Complete audit-ready documentation in system of record",
+      owner_role: "Analyst",
+      due_window: /before end of shift/i.test(policyText) ? "Before end of shift" : "Same business day",
+      reason: "Policy requires traceable records for compliance and handoff continuity.",
+    });
+  }
+
+  if (missingInfo) {
+    actions.unshift({
+      step: "Collect missing policy parameters (owner, SLA, and escalation threshold)",
+      owner_role: "Operations Manager",
+      due_window: "Before execution",
+      reason: "Incomplete policy context introduces execution risk and low-confidence outputs.",
+    });
+  }
+
+  if (actions.length === 0) {
+    actions.push(
+      {
+        step: "Assign execution owner and create a policy-aligned task checklist",
+        owner_role: "Operations Manager",
+        due_window: firstWindow(policyText),
+        reason: "Owner mapping is required to convert policy language into accountable execution.",
+      },
+      {
+        step: "Capture action evidence and communication logs",
+        owner_role: "Analyst",
+        due_window: "Same business day",
+        reason: "Audit traceability is required for compliance verification.",
+      },
+    );
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const action of actions) {
+    if (seen.has(action.step)) continue;
+    seen.add(action.step);
+    deduped.push(action);
+  }
+
+  return deduped.slice(0, 4);
+}
+
 function mockResponse(prompt) {
   const input = parseInputFromPrompt(prompt);
   const policyText = String(input?.policy_text || "");
@@ -61,26 +163,14 @@ function mockResponse(prompt) {
   const hasConflict = hasMockConflict(policyText);
   const missingInfo = /Escalate referral concerns promptly/i.test(policyText);
   const lowConfidence = hasConflict || missingInfo;
+  const actions = buildMockActions(policyText, hasConflict, missingInfo);
 
   return JSON.stringify({
     summary: lowConfidence
       ? "Potential policy ambiguity detected."
       : "Policy converted into executable workflow actions.",
     priority_level: hasConflict ? "critical" : lowConfidence ? "high" : "medium",
-    actions: [
-      {
-        step: "Assign case owner and initiate triage review",
-        owner_role: "Operations Manager",
-        due_window: hasConflict ? "Immediately" : "Within stated policy SLA",
-        reason: "Ensure accountable ownership and timeline adherence.",
-      },
-      {
-        step: "Document all intervention and communication steps",
-        owner_role: "Analyst",
-        due_window: "Same business day",
-        reason: "Maintain auditability and compliance traceability.",
-      },
-    ],
+    actions,
     compliance_flags: hasConflict
       ? [
           {
