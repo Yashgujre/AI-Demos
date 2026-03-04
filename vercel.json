@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "backend/api/*.mjs": {
-      "runtime": "nodejs22.x"
-    }
-  },
   "routes": [
     {
       "src": "/api/generate",

@@ -16,3 +16,4 @@ frontend/.env
 
 # Logs
 npm-debug.log*
+.vercel
