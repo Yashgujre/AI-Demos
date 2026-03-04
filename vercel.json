@@ -1,9 +1,3 @@
 {
-  "outputDirectory": "frontend/dist",
-  "routes": [
-    {
-      "src": "/api/generate",
-      "dest": "backend/api/generate.mjs"
-    }
-  ]
+  "outputDirectory": "frontend/dist"
 }
