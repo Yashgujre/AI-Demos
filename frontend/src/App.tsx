@@ -6,6 +6,7 @@ import type { ApiError, InputPayload, OutputPayload } from "./types";
 const SESSION_LIMIT = 3;
 const SESSION_KEY = "policy_copilot_runs";
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+const APP_MODE = (import.meta.env.VITE_APP_MODE || "mock").toLowerCase() === "live" ? "Live" : "Mock";
 
 let inMemorySessionRuns = 0;
 
@@ -190,6 +191,9 @@ export default function App() {
         <h1>Paste Any Policy. Get an Audit-Ready Action Plan in Seconds.</h1>
         <p className="hero-subtitle">
           Public demo mode: {SESSION_LIMIT} runs per session. Used: {runs}. Remaining: {isByokActive ? "Unlimited (BYOK)" : remainingRuns}
+        </p>
+        <p className={`mode-badge mode-${APP_MODE.toLowerCase()}`} aria-label={`Application mode ${APP_MODE}`}>
+          Mode: {APP_MODE}
         </p>
       </header>
 
@@ -444,7 +448,33 @@ export default function App() {
               </button>
               {showAuditLog && (
                 <div className="audit-log">
-                  <pre>{JSON.stringify(result.audit_log, null, 2)}</pre>
+                  <p className="audit-help">
+                    This section explains which policy constraints were detected and what assumptions were made to produce the action plan.
+                  </p>
+                  <div className="audit-section">
+                    <p className="audit-section-title">Policy Constraints Detected</p>
+                    {result.audit_log.policy_constraints_detected.length === 0 ? (
+                      <p className="muted">None detected.</p>
+                    ) : (
+                      <ul>
+                        {result.audit_log.policy_constraints_detected.map((item, idx) => (
+                          <li key={`${item}-${idx}`}>{item}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="audit-section">
+                    <p className="audit-section-title">Assumptions Made</p>
+                    {result.audit_log.assumptions_made.length === 0 ? (
+                      <p className="muted">No assumptions were required.</p>
+                    ) : (
+                      <ul>
+                        {result.audit_log.assumptions_made.map((item, idx) => (
+                          <li key={`${item}-${idx}`}>{item}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               )}
             </>

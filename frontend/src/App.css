@@ -93,6 +93,28 @@ textarea:focus-visible,
   font-size: 0.82rem;
 }
 
+.mode-badge {
+  display: inline-flex;
+  margin-top: 8px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.mode-mock {
+  background: #fff8e1;
+  color: #8a6800;
+  border-color: #f0e0a1;
+}
+
+.mode-live {
+  background: #e0f2f1;
+  color: #0d6e6e;
+  border-color: #9bd8d5;
+}
+
 .scenario-bar {
   display: flex;
   gap: 10px;
@@ -519,13 +541,35 @@ select:focus {
   padding: 10px;
 }
 
-.audit-log pre {
+.audit-help {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: #4b5563;
+}
+
+.audit-section {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.audit-section-title {
+  margin: 0 0 4px;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.audit-section ul {
   margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 0.8rem;
-  line-height: 1.5;
-  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  padding-left: 18px;
+}
+
+.audit-section li {
+  font-size: 0.85rem;
+  color: #1f2937;
 }
 
 .error-block {
