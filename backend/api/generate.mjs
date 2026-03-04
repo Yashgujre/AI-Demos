@@ -60,7 +60,7 @@ export default async function handler(req, res) {
   }
 
   const ip = getIp(req);
-  const rate = checkIpRateLimit(ip);
+  const rate = await checkIpRateLimit(ip);
   if (!rate.allowed) {
     return send(
       res,
