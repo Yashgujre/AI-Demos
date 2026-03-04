@@ -71,4 +71,58 @@ export const scenarios = [
       expectLowConfidence: true,
     },
   },
+  {
+    id: "immediate-vs-not-until",
+    title: "Scenario 5: Immediate vs Not-Until Condition",
+    description: "Immediate action is required, but policy also blocks action pending a delayed condition.",
+    input: {
+      policy_text:
+        "For safety escalations, notify the patient immediately. Do not initiate outreach until supervisory review is completed within 12 hours. Log all updates before shift handoff.",
+      domain: "healthcare",
+      urgency: "high",
+      organization_context: "Behavioral health escalation operations.",
+      requester_role: "Operations Manager",
+    },
+    checks: {
+      expectMissingInfo: false,
+      expectHighSeverityFlag: true,
+      expectLowConfidence: true,
+    },
+  },
+  {
+    id: "deadline-vs-before-delayed-event",
+    title: "Scenario 6: Deadline vs Delayed Before Clause",
+    description: "Short execution deadline conflicts with a delayed prerequisite event.",
+    input: {
+      policy_text:
+        "Send initial patient outreach within 45 minutes. Complete outreach before specialist review is finalized within 2 days. Record communication attempts in the care tracker.",
+      domain: "healthcare",
+      urgency: "high",
+      organization_context: "Care transition coordination team.",
+      requester_role: "Compliance Lead",
+    },
+    checks: {
+      expectMissingInfo: false,
+      expectHighSeverityFlag: true,
+      expectLowConfidence: true,
+    },
+  },
+  {
+    id: "deadline-vs-open-ended-wait",
+    title: "Scenario 7: Deadline vs Open-Ended Wait Condition",
+    description: "Policy requires fast response while blocking execution until an unspecified condition is met.",
+    input: {
+      policy_text:
+        "Contact the patient within 1 hour of urgent referral intake. Do not begin outreach until payer authorization is confirmed. Document authorization outcome before closure.",
+      domain: "healthcare",
+      urgency: "high",
+      organization_context: "Utilization management intake desk.",
+      requester_role: "Analyst",
+    },
+    checks: {
+      expectMissingInfo: false,
+      expectHighSeverityFlag: true,
+      expectLowConfidence: true,
+    },
+  },
 ];

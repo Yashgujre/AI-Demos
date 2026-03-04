@@ -1,9 +1,102 @@
-function hasConflictSignals(text) {
-  const normalized = text.toLowerCase();
-  return (
-    (normalized.includes("within 30 minutes") && normalized.includes("within 24 hours")) ||
-    (normalized.includes("immediately") && normalized.includes("do not") && normalized.includes("until"))
+const MINUTES_PER_UNIT = {
+  minute: 1,
+  minutes: 1,
+  hour: 60,
+  hours: 60,
+  day: 60 * 24,
+  days: 60 * 24,
+  "business day": 60 * 24,
+  "business days": 60 * 24,
+};
+
+function extractDurationMinutes(text) {
+  const match = text.match(
+    /\bwithin\s+(\d+)\s*(minute|minutes|hour|hours|day|days|business day|business days)\b/i,
   );
+  if (!match) return null;
+
+  const value = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const multiplier = MINUTES_PER_UNIT[unit];
+  if (!multiplier || Number.isNaN(value)) return null;
+  return value * multiplier;
+}
+
+function extractTimeConstraints(text) {
+  const constraints = [];
+
+  for (const match of text.matchAll(
+    /\bwithin\s+(\d+)\s*(minute|minutes|hour|hours|day|days|business day|business days)\b/gi,
+  )) {
+    constraints.push({
+      type: "deadline",
+      raw: match[0],
+      durationMinutes: extractDurationMinutes(match[0]),
+    });
+  }
+
+  for (const match of text.matchAll(/\bimmediately\b/gi)) {
+    constraints.push({
+      type: "immediate",
+      raw: match[0],
+      durationMinutes: 0,
+    });
+  }
+
+  for (const match of text.matchAll(/\b(?:not\s+until|do\s+not\b[^.;]*?\buntil)\s+([^.;]+)/gi)) {
+    constraints.push({
+      type: "wait",
+      raw: match[0].trim(),
+      durationMinutes: extractDurationMinutes(match[1]),
+    });
+  }
+
+  for (const match of text.matchAll(/\bbefore\s+([^.;]+)/gi)) {
+    constraints.push({
+      type: "before",
+      raw: match[0],
+      durationMinutes: extractDurationMinutes(match[1]),
+    });
+  }
+
+  return constraints;
+}
+
+function createsLogicalConflict(a, b) {
+  const pair = [a.type, b.type].sort().join(":");
+
+  if (pair === "immediate:wait") {
+    return true;
+  }
+
+  if (pair === "deadline:wait" || pair === "before:deadline") {
+    const deadline = a.type === "deadline" ? a : b.type === "deadline" ? b : null;
+    const gate = a.type === "wait" || a.type === "before" ? a : b;
+
+    if (!deadline) return false;
+
+    if (gate.durationMinutes == null) {
+      // A deadline with an unknown waiting condition is a conflict risk.
+      // "before <event>" without a duration is generally just an ordering rule.
+      return gate.type === "wait";
+    }
+
+    return gate.durationMinutes > (deadline.durationMinutes || 0);
+  }
+
+  return false;
+}
+
+function hasConflictSignals(text) {
+  const constraints = extractTimeConstraints(text.toLowerCase());
+  for (let i = 0; i < constraints.length; i += 1) {
+    for (let j = i + 1; j < constraints.length; j += 1) {
+      if (createsLogicalConflict(constraints[i], constraints[j])) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function hasMissingCriticalSignals(output) {
