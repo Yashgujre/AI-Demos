@@ -1,12 +1,13 @@
 import { ZodError } from "zod";
 import { processRequest } from "../lib/service.mjs";
 import { checkIpRateLimit } from "../lib/rate-limit.mjs";
-import { MODEL_TIMEOUT_MESSAGE } from "../lib/model.mjs";
+import { INVALID_USER_API_KEY_MESSAGE, MODEL_TIMEOUT_MESSAGE } from "../lib/model.mjs";
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
+let hasLoggedOpenCorsWarning = false;
 
 function getIp(req) {
   return (
@@ -18,13 +19,26 @@ function getIp(req) {
 }
 
 function corsHeaders(origin) {
-  const allowOrigin = ALLOWED_ORIGINS.length === 0 || ALLOWED_ORIGINS.includes(origin) ? origin || "*" : "null";
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Headers": "Content-Type",
+  const headers = {
+    "Access-Control-Allow-Headers": "Content-Type,X-User-API-Key",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
     "Content-Type": "application/json",
   };
+
+  if (ALLOWED_ORIGINS.length === 0) {
+    if (!hasLoggedOpenCorsWarning) {
+      console.warn("[Policy Copilot] WARNING: ALLOWED_ORIGINS is empty. Allowing all origins.");
+      hasLoggedOpenCorsWarning = true;
+    }
+    headers["Access-Control-Allow-Origin"] = origin || "*";
+    return headers;
+  }
+
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+
+  return headers;
 }
 
 function send(res, status, body, origin) {
@@ -32,6 +46,25 @@ function send(res, status, body, origin) {
   const headers = corsHeaders(origin);
   Object.entries(headers).forEach(([k, v]) => res.setHeader(k, v));
   res.end(JSON.stringify(body));
+}
+
+function readUserApiKey(req) {
+  const headerValue = req.headers["x-user-api-key"];
+  if (Array.isArray(headerValue)) {
+    return String(headerValue[0] || "").trim();
+  }
+  return String(headerValue || "").trim();
+}
+
+function isJsonContentType(req) {
+  const contentType = String(req.headers["content-type"] || "");
+  return contentType.toLowerCase().includes("application/json");
+}
+
+function sanitizeErrorDetails(error, userApiKey) {
+  const detail = String(error?.message || error);
+  if (!userApiKey) return detail;
+  return detail.split(userApiKey).join("[REDACTED]");
 }
 
 export default async function handler(req, res) {
@@ -50,6 +83,19 @@ export default async function handler(req, res) {
     );
   }
 
+  if (!isJsonContentType(req)) {
+    return send(
+      res,
+      415,
+      {
+        error_code: "BAD_REQUEST",
+        message: "Unsupported content type",
+        details: "Expected Content-Type: application/json.",
+      },
+      origin,
+    );
+  }
+
   const size = Number(req.headers["content-length"] || 0);
   if (size > 60_000) {
     return send(
@@ -60,24 +106,27 @@ export default async function handler(req, res) {
     );
   }
 
-  const ip = getIp(req);
-  const rate = await checkIpRateLimit(ip);
-  if (!rate.allowed) {
-    return send(
-      res,
-      429,
-      {
-        error_code: "RATE_LIMITED",
-        message: "Daily public demo cap reached.",
-        details: "Please try again tomorrow.",
-      },
-      origin,
-    );
+  const userApiKey = readUserApiKey(req);
+  if (!userApiKey) {
+    const ip = getIp(req);
+    const rate = await checkIpRateLimit(ip);
+    if (!rate.allowed) {
+      return send(
+        res,
+        429,
+        {
+          error_code: "RATE_LIMITED",
+          message: "Daily public demo cap reached.",
+          details: "Please try again tomorrow.",
+        },
+        origin,
+      );
+    }
   }
 
   try {
     const payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-    const output = await processRequest(payload);
+    const output = await processRequest(payload, { userApiKey: userApiKey || undefined });
     return send(res, 200, output, origin);
   } catch (error) {
     if (error instanceof ZodError) {
@@ -93,6 +142,23 @@ export default async function handler(req, res) {
       );
     }
 
+    if (
+      error?.name === "InvalidUserApiKeyError"
+      || String(error?.message || "").includes(INVALID_USER_API_KEY_MESSAGE)
+    ) {
+      return send(
+        res,
+        400,
+        {
+          error_code: "BAD_REQUEST",
+          message: "Invalid API key provided.",
+          details:
+            "The Gemini API rejected the provided key. Please check that it is valid and has the Generative Language API enabled.",
+        },
+        origin,
+      );
+    }
+
     return send(
       res,
       500,
@@ -102,7 +168,7 @@ export default async function handler(req, res) {
           String(error?.message || "").includes(MODEL_TIMEOUT_MESSAGE)
             ? MODEL_TIMEOUT_MESSAGE
             : "Failed to generate action plan.",
-        details: String(error?.message || error),
+        details: sanitizeErrorDetails(error, userApiKey),
       },
       origin,
     );

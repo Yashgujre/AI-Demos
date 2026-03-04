@@ -1,5 +1,17 @@
 import { GoogleGenAI } from "@google/genai";
+
 export const MODEL_TIMEOUT_MESSAGE = "Model response timed out. Please try again.";
+export const INVALID_USER_API_KEY_MESSAGE = "Invalid API key provided.";
+
+const startupMode = process.env.MOCK_MODEL === "1" ? "mock" : "live";
+const startupModel = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+
+console.log(`[Policy Copilot] Model: ${startupModel}, Mode: ${startupMode}.`);
+if (startupMode !== "mock" && !process.env.GEMINI_API_KEY) {
+  console.warn(
+    "[Policy Copilot] WARNING: MOCK_MODEL is not enabled and GEMINI_API_KEY is not set. Live requests will fail.",
+  );
+}
 
 function extractJson(text) {
   const trimmed = text.trim();
@@ -26,11 +38,27 @@ function parseInputFromPrompt(prompt) {
   }
 }
 
+function hasMockConflict(policyText) {
+  const normalized = policyText.toLowerCase();
+  const classicConflict = /within\s+30\s+minutes[\s\S]*within\s+24\s+hours/i.test(policyText);
+  const immediateWaitConflict = /\bimmediately\b/i.test(policyText)
+    && /\b(?:not\s+until|do\s+not\b[^.;]*?\buntil)\b/i.test(policyText);
+  const quickDeadlineWaitConflict = /\bwithin\s+\d+\s+minutes\b/i.test(policyText)
+    && /\b(?:not\s+until|do\s+not\b[^.;]*?\buntil)\b/i.test(policyText);
+  const deadlineBeforeDelayedConflict =
+    /\bwithin\s+\d+\s+minutes\b/i.test(policyText)
+    && /\bbefore\b[\s\S]*\bwithin\s+\d+\s+(?:hours|days|business\s+days?)\b/i.test(policyText);
+
+  return classicConflict || immediateWaitConflict || quickDeadlineWaitConflict || deadlineBeforeDelayedConflict ||
+    // Keep compatibility with normalized wording variations.
+    (normalized.includes("immediately") && normalized.includes("do not") && normalized.includes("until"));
+}
+
 function mockResponse(prompt) {
   const input = parseInputFromPrompt(prompt);
   const policyText = String(input?.policy_text || "");
 
-  const hasConflict = /within 30 minutes[\s\S]*within 24 hours/i.test(policyText);
+  const hasConflict = hasMockConflict(policyText);
   const missingInfo = /Escalate referral concerns promptly/i.test(policyText);
   const lowConfidence = hasConflict || missingInfo;
 
@@ -58,7 +86,7 @@ function mockResponse(prompt) {
           {
             flag: "Conflicting response timing requirements",
             severity: "high",
-            evidence: "Policy states both 30-minute action and 24-hour prerequisite review.",
+            evidence: "Policy contains conflicting timing or gating requirements.",
           },
         ]
       : [],
@@ -73,17 +101,34 @@ function mockResponse(prompt) {
   });
 }
 
-export async function generateWithGemini(prompt) {
+function isInvalidApiKeyError(error) {
+  const status = Number(error?.status || error?.code || error?.cause?.status || NaN);
+  const msg = String(error?.message || "").toLowerCase();
+  return (
+    status === 401
+    || status === 403
+    || msg.includes('"code":401')
+    || msg.includes('"code":403')
+    || msg.includes("unauthorized")
+    || msg.includes("forbidden")
+    || msg.includes("api key")
+    || msg.includes("permission denied")
+    || msg.includes("invalid argument")
+  );
+}
+
+export async function generateWithGemini(prompt, options = {}) {
   if (process.env.MOCK_MODEL === "1") {
     return mockResponse(prompt);
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("Missing GEMINI_API_KEY.");
+  // Intentionally do not log or persist any user-provided API key.
+  const selectedApiKey = options.userApiKey || process.env.GEMINI_API_KEY;
+  if (!selectedApiKey) throw new Error("Missing GEMINI_API_KEY.");
 
   const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
   const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 8000);
-  const client = new GoogleGenAI({ apiKey });
+  const client = new GoogleGenAI({ apiKey: selectedApiKey });
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -104,6 +149,11 @@ export async function generateWithGemini(prompt) {
     const aborted = error?.name === "AbortError" || controller.signal.aborted;
     if (aborted) {
       throw new Error(MODEL_TIMEOUT_MESSAGE);
+    }
+    if (options.userApiKey && isInvalidApiKeyError(error)) {
+      const invalidKeyError = new Error(INVALID_USER_API_KEY_MESSAGE);
+      invalidKeyError.name = "InvalidUserApiKeyError";
+      throw invalidKeyError;
     }
     throw error;
   } finally {

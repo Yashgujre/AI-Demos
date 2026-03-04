@@ -100,6 +100,72 @@ textarea:focus-visible,
   margin: 18px 0 20px;
 }
 
+.byok-panel {
+  margin: -6px 0 18px;
+}
+
+.byok-toggle {
+  width: 100%;
+  border: 1px solid #d7dede;
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #1f2937;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.byok-toggle:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.byok-chevron {
+  color: var(--muted);
+  margin-left: 8px;
+}
+
+.byok-content {
+  margin-top: 8px;
+  background: #ffffff;
+  border: 1px solid #e7ecec;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 12px;
+}
+
+.byok-content input[type="password"] {
+  margin-bottom: 8px;
+}
+
+.byok-link {
+  color: var(--teal);
+  font-size: 0.84rem;
+  text-decoration: underline;
+}
+
+.byok-checkbox {
+  margin: 10px 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #374151;
+  font-size: 0.9rem;
+}
+
+.byok-checkbox input {
+  width: auto;
+}
+
+.byok-note {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .scenario-pill {
   border: 1px solid #cfd8d8;
   border-radius: 999px;
@@ -152,6 +218,12 @@ textarea:focus-visible,
   margin-bottom: 12px;
 }
 
+.inline-error {
+  margin: -6px 0 10px;
+  font-size: 0.78rem;
+  color: var(--critical);
+}
+
 .field-label,
 .section-label {
   display: block;
@@ -202,6 +274,27 @@ select:focus {
   color: #ffffff;
   font-weight: 600;
   cursor: pointer;
+}
+
+.submit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.submit-row .submit-btn {
+  width: auto;
+  flex: 1;
+}
+
+.byok-indicator {
+  border-radius: 999px;
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  white-space: nowrap;
 }
 
 .submit-btn:hover {
@@ -453,6 +546,27 @@ select:focus {
   overflow-wrap: anywhere;
 }
 
+.validation-issues {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.validation-issues li {
+  font-size: 0.8rem;
+  color: #7f1d1d;
+}
+
+.rate-limit-callout {
+  margin-top: 10px;
+  border-left: 3px solid var(--amber);
+  border-radius: 8px;
+  background: #fff8e1;
+  color: #6a4f00;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+}
+
 .loading-state {
   display: grid;
   gap: 8px;
@@ -523,8 +637,13 @@ select:focus {
     -webkit-overflow-scrolling: touch;
   }
 
-.metrics-grid {
+  .metrics-grid {
     grid-template-columns: 1fr;
+  }
+
+  .submit-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 

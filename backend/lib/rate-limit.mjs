@@ -23,6 +23,16 @@ async function redisIncrWithTtl(key) {
     "Content-Type": "application/json",
   };
 
+  // Atomicity matters: the old INCR-then-EXPIRE flow can lose TTL under concurrent
+  // first writes. Initializing with SET NX EX guarantees TTL is attached at creation.
+  const initRes = await fetch(
+    `${config.url}/set/${encodeURIComponent(key)}/0/EX/${TTL_SECONDS}/NX`,
+    { method: "POST", headers },
+  );
+  if (!initRes.ok) {
+    throw new Error(`KV SET NX EX failed with status ${initRes.status}`);
+  }
+
   const incrRes = await fetch(`${config.url}/incr/${encodeURIComponent(key)}`, {
     method: "POST",
     headers,
@@ -35,16 +45,6 @@ async function redisIncrWithTtl(key) {
   const count = Number(incrPayload?.result);
   if (!Number.isFinite(count)) {
     throw new Error("KV INCR returned non-numeric result");
-  }
-
-  if (count === 1) {
-    const expireRes = await fetch(`${config.url}/expire/${encodeURIComponent(key)}/${TTL_SECONDS}`, {
-      method: "POST",
-      headers,
-    });
-    if (!expireRes.ok) {
-      throw new Error(`KV EXPIRE failed with status ${expireRes.status}`);
-    }
   }
 
   return count;

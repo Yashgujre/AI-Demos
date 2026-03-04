@@ -22,7 +22,7 @@ function extractDurationMinutes(text) {
   return value * multiplier;
 }
 
-function extractTimeConstraints(text) {
+export function extractTimeConstraints(text) {
   const constraints = [];
 
   for (const match of text.matchAll(
@@ -43,7 +43,7 @@ function extractTimeConstraints(text) {
     });
   }
 
-  for (const match of text.matchAll(/\b(?:not\s+until|do\s+not\b[^.;]*?\buntil)\s+([^.;]+)/gi)) {
+  for (const match of text.matchAll(/\b(?:not\s+until|do\s+not\b[^.;]*?\buntil|not\b[^.;]*?\buntil)\s+([^.;]+)/gi)) {
     constraints.push({
       type: "wait",
       raw: match[0].trim(),
@@ -62,7 +62,7 @@ function extractTimeConstraints(text) {
   return constraints;
 }
 
-function createsLogicalConflict(a, b) {
+export function createsLogicalConflict(a, b) {
   const pair = [a.type, b.type].sort().join(":");
 
   if (pair === "immediate:wait") {
@@ -87,7 +87,7 @@ function createsLogicalConflict(a, b) {
   return false;
 }
 
-function hasConflictSignals(text) {
+export function hasConflictSignals(text) {
   const constraints = extractTimeConstraints(text.toLowerCase());
   for (let i = 0; i < constraints.length; i += 1) {
     for (let j = i + 1; j < constraints.length; j += 1) {

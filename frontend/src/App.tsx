@@ -9,6 +9,11 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
 let inMemorySessionRuns = 0;
 
+type ValidationErrors = {
+  policy_text?: string;
+  organization_context?: string;
+};
+
 function readSessionRuns(storageKey: string) {
   try {
     const raw = sessionStorage.getItem(storageKey);
@@ -26,7 +31,7 @@ function writeSessionRuns(storageKey: string, count: number) {
   }
 }
 
-function useSessionLimit(limit: number, storageKey: string) {
+function useSessionLimit(limit: number, storageKey: string, bypass: boolean) {
   const [runs, setRuns] = useState(() => readSessionRuns(storageKey));
 
   const setRunsSafely = (count: number) => {
@@ -44,7 +49,7 @@ function useSessionLimit(limit: number, storageKey: string) {
   return {
     runs,
     remainingRuns,
-    canRun: runs < limit,
+    canRun: bypass || runs < limit,
     increment,
   };
 }
@@ -69,31 +74,51 @@ export default function App() {
   const [activeScenario, setActiveScenario] = useState<string | null>(null);
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  const [showByok, setShowByok] = useState(false);
+  const [byokEnabled, setByokEnabled] = useState(false);
+  const [byokKey, setByokKey] = useState("");
 
-  const { runs, remainingRuns, canRun, increment } = useSessionLimit(SESSION_LIMIT, SESSION_KEY);
+  const isByokActive = byokEnabled && byokKey.trim().length > 0;
+  const { runs, remainingRuns, canRun, increment } = useSessionLimit(SESSION_LIMIT, SESSION_KEY, isByokActive);
 
-  const scenarioAriaMap = useMemo(
-    () => ({
-      "high-risk-escalation": "Load scenario 1: high-risk escalation policy sample",
-      "routine-update": "Load scenario 2: routine policy update sample",
-      "missing-context": "Load scenario 3: incomplete policy context sample",
-      "conflicting-clauses": "Load scenario 4: conflicting policy clauses sample",
-    }),
-    [],
-  );
+  const validationDetailItems = useMemo(() => {
+    if (!error || error.error_code !== "VALIDATION_FAILED" || !error.details) return [];
+    return error.details
+      .split("; ")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }, [error]);
 
   const loadScenario = (id: string) => {
     const scenario = scenarios.find((s) => s.id === id);
     if (!scenario) return;
     setForm(scenario.input);
     setActiveScenario(id);
+    setValidationErrors({});
     setShowAuditLog(false);
     setCopyState("idle");
     setError(null);
     setResult(null);
   };
 
+  const validateForm = () => {
+    const nextErrors: ValidationErrors = {};
+    if (form.policy_text.trim().length < 20) {
+      nextErrors.policy_text = "Policy text must be at least 20 characters.";
+    }
+    if (form.organization_context.trim().length < 3) {
+      nextErrors.organization_context = "Organization context must be at least 3 characters.";
+    }
+    setValidationErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
   const submitCurrentForm = async () => {
+    if (!validateForm()) {
+      return;
+    }
+
     if (!canRun) {
       setError({
         error_code: "RATE_LIMITED",
@@ -110,9 +135,14 @@ export default function App() {
     setResult(null);
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (isByokActive) {
+        headers["X-User-API-Key"] = byokKey.trim();
+      }
+
       const response = await fetch(`${API_BASE}/api/generate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(form),
       });
 
@@ -124,7 +154,9 @@ export default function App() {
       }
 
       setResult(data as OutputPayload);
-      increment();
+      if (!isByokActive) {
+        increment();
+      }
     } catch (err) {
       setError({
         error_code: "MODEL_ERROR",
@@ -157,7 +189,7 @@ export default function App() {
         <p className="hero-pill">Healthcare Policy Copilot</p>
         <h1>Paste Any Policy. Get an Audit-Ready Action Plan in Seconds.</h1>
         <p className="hero-subtitle">
-          Public demo mode: {SESSION_LIMIT} runs per session. Used: {runs}. Remaining: {remainingRuns}
+          Public demo mode: {SESSION_LIMIT} runs per session. Used: {runs}. Remaining: {isByokActive ? "Unlimited (BYOK)" : remainingRuns}
         </p>
       </header>
 
@@ -167,12 +199,45 @@ export default function App() {
             key={scenario.id}
             type="button"
             className={`scenario-pill ${activeScenario === scenario.id ? "active" : ""}`}
-            aria-label={scenarioAriaMap[scenario.id as keyof typeof scenarioAriaMap] || `Load ${scenario.label}`}
+            aria-label={`Load scenario: ${scenario.label}`}
             onClick={() => loadScenario(scenario.id)}
           >
             {scenario.label}
           </button>
         ))}
+      </section>
+
+      <section className="byok-panel" aria-label="Bring your own API key">
+        <button className="byok-toggle" type="button" onClick={() => setShowByok((prev) => !prev)}>
+          <span aria-hidden="true">🔒</span> Use Your Own API Key
+          <span className="byok-chevron" aria-hidden="true">{showByok ? "▾" : "▸"}</span>
+        </button>
+        {showByok && (
+          <div className="byok-content">
+            <label htmlFor="byok-key-input" className="field-label">Gemini API Key</label>
+            <input
+              id="byok-key-input"
+              type="password"
+              placeholder="Paste your Gemini API key"
+              value={byokKey}
+              onChange={(e) => setByokKey(e.target.value)}
+            />
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="byok-link">
+              Get a free key from Google AI Studio
+            </a>
+            <label className="byok-checkbox">
+              <input
+                type="checkbox"
+                checked={byokEnabled}
+                onChange={(e) => setByokEnabled(e.target.checked)}
+              />
+              Use my key for this session
+            </label>
+            <p className="byok-note">
+              Your key is stored only in memory and never sent to our servers. It is sent directly in the request header and used only for model calls.
+            </p>
+          </div>
+        )}
       </section>
 
       <main className="layout">
@@ -184,14 +249,14 @@ export default function App() {
           </label>
           <textarea
             id="policy-text-input"
-            required
-            minLength={20}
             value={form.policy_text}
             onChange={(e) => {
               setActiveScenario(null);
+              setValidationErrors((prev) => ({ ...prev, policy_text: undefined }));
               setForm({ ...form, policy_text: e.target.value });
             }}
           />
+          {validationErrors.policy_text ? <p className="inline-error">{validationErrors.policy_text}</p> : null}
 
           <label htmlFor="urgency-select">
             <span className="field-label">Urgency</span>
@@ -214,13 +279,16 @@ export default function App() {
           </label>
           <input
             id="org-context-input"
-            required
             value={form.organization_context}
             onChange={(e) => {
               setActiveScenario(null);
+              setValidationErrors((prev) => ({ ...prev, organization_context: undefined }));
               setForm({ ...form, organization_context: e.target.value });
             }}
           />
+          {validationErrors.organization_context ? (
+            <p className="inline-error">{validationErrors.organization_context}</p>
+          ) : null}
 
           <label htmlFor="requester-role-select">
             <span className="field-label">Requester Role</span>
@@ -239,9 +307,12 @@ export default function App() {
             <option>Analyst</option>
           </select>
 
-          <button className="submit-btn" type="submit" disabled={loading || !canRun}>
-            Generate Action Plan
-          </button>
+          <div className="submit-row">
+            <button className="submit-btn" type="submit" disabled={loading || !canRun}>
+              Generate Action Plan
+            </button>
+            {isByokActive ? <span className="byok-indicator">Using your key</span> : null}
+          </div>
         </form>
 
         <section className="panel output-panel" aria-live="polite" aria-busy={loading ? "true" : "false"}>
@@ -261,7 +332,22 @@ export default function App() {
             <div className="error-block" role="alert">
               <strong>{error.error_code}</strong>
               <p>{error.message}</p>
-              {error.details ? <p className="error-details">{error.details}</p> : null}
+              {error.error_code === "VALIDATION_FAILED" && validationDetailItems.length > 0 ? (
+                <ul className="validation-issues">
+                  {validationDetailItems.map((issue, idx) => (
+                    <li key={`${issue}-${idx}`}>- {issue}</li>
+                  ))}
+                </ul>
+              ) : error.details ? (
+                <p className="error-details">{error.details}</p>
+              ) : null}
+
+              {error.error_code === "RATE_LIMITED" && !isByokActive ? (
+                <div className="rate-limit-callout">
+                  You can continue by providing your own Gemini API key above.
+                </div>
+              ) : null}
+
               <div className="error-actions">
                 <button className="retry-btn" type="button" onClick={() => void submitCurrentForm()}>
                   Retry

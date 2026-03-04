@@ -1,3 +1,7 @@
+![Deploy](https://github.com/Yashgujre/AI-Demos/actions/workflows/deploy-frontend.yml/badge.svg)
+[![Stack](https://img.shields.io/badge/Stack-React%20%7C%20Vercel%20%7C%20Gemini-0D6E6E)](https://github.com/Yashgujre/AI-Demos)
+**[Live Demo →](https://yashgujre.github.io/AI-Demos/)**
+
 # Policy-to-Action Copilot
 
 Convert healthcare policy/SOP text into a structured, execution-ready action plan with guardrails, confidence scoring, and audit-friendly output.
@@ -154,8 +158,15 @@ Checks include:
 - CORS allowlist is enforced via `ALLOWED_ORIGINS`.
 - Request size is capped to reduce abuse.
 
+## Bring Your Own Key
+- You can provide your own Gemini API key in the UI when public demo limits are reached.
+- The key is memory-only and session-scoped (React state only), and is cleared when the tab is closed.
+- The app does not persist or log your key.
+- BYOK requests send the key only in the request header for model calls.
+- Create a key in [Google AI Studio](https://aistudio.google.com/apikey).
+
 ## Useful docs
 - [System Documentation](./docs/SYSTEM_DOCUMENTATION.md)
 - [Architecture Notes](./docs/ARCHITECTURE.md)
 - [Demo Script](./docs/DEMO_SCRIPT.md)
-- [End-to-End Build Blog](./docs/BLOG_IDEATION_TO_LAUNCH.md)
+- [Healthcare Policy Copilot](./docs/Healthcare%20Policy%20Copilot.md)

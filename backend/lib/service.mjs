@@ -60,12 +60,15 @@ export async function processRequest(input, options = {}) {
   const validInput = InputSchema.parse(input);
   const sanitizedInput = sanitizeInput(validInput);
   const includeRaw = options.includeRaw === true;
+  const userApiKey = typeof options.userApiKey === "string" && options.userApiKey.trim()
+    ? options.userApiKey.trim()
+    : undefined;
   const rawOutputs = [];
 
   const firstPrompt = buildPrompt(sanitizedInput);
   let raw;
   try {
-    raw = await generateWithGemini(firstPrompt);
+    raw = await generateWithGemini(firstPrompt, { userApiKey });
     if (includeRaw) rawOutputs.push(raw);
   } catch (error) {
     if (isTimeoutError(error)) {
@@ -82,7 +85,7 @@ export async function processRequest(input, options = {}) {
   } catch (err) {
     const correctionPrompt = buildCorrectionPrompt(sanitizedInput, raw, zodIssues(err));
     try {
-      raw = await generateWithGemini(correctionPrompt);
+      raw = await generateWithGemini(correctionPrompt, { userApiKey });
       if (includeRaw) rawOutputs.push(raw);
     } catch (error) {
       if (isTimeoutError(error)) {

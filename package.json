@@ -10,7 +10,8 @@
     "lint": "npm --prefix frontend run lint",
     "preview": "npm --prefix frontend run preview",
     "evals": "node evals/run-evals.mjs",
-    "test:sanitize": "node tests/sanitize-input.test.mjs"
+    "test:sanitize": "node tests/sanitize-input.test.mjs",
+    "test:guardrails": "node tests/guardrails.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.32.0",
