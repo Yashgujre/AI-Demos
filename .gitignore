@@ -1,0 +1,18 @@
+# Local planning docs (do not push)
+POLICY_TO_ACTION_COPILOT.md
+PROJECT_CONTEXT.md
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build output
+frontend/dist/
+
+# Env
+.env
+.env.local
+frontend/.env
+
+# Logs
+npm-debug.log*

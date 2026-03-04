@@ -1,0 +1,17 @@
+{
+  "name": "policy-to-action-copilot",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "lint": "npm --prefix frontend run lint",
+    "preview": "npm --prefix frontend run preview",
+    "evals": "node evals/run-evals.mjs"
+  },
+  "dependencies": {
+    "@google/genai": "^1.43.0",
+    "zod": "^4.3.6"
+  }
+}
