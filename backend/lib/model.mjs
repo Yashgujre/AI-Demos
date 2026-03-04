@@ -54,6 +54,20 @@ function hasMockConflict(policyText) {
     (normalized.includes("immediately") && normalized.includes("do not") && normalized.includes("until"));
 }
 
+function hasMissingContextSignals(policyText) {
+  const normalized = policyText.toLowerCase();
+  const hasExplicitDeadline = /\bwithin\s+\d+\s+(?:minutes?|hours?|days?|business\s+days?)\b/i.test(policyText);
+  const hasExplicitOwner =
+    /\boperations manager|analyst|compliance lead|clinician|supervisor|coordinator|owner\b/i.test(policyText);
+  const hasVagueLanguage =
+    /\bquickly|promptly|appropriately|standard rules|right reviewer|as needed|as appropriate\b/i.test(policyText);
+
+  const isVeryShort = normalized.replace(/\s+/g, " ").trim().split(" ").length < 22;
+
+  // Treat text as ambiguous when it relies on vague instructions and lacks explicit ownership/timing signals.
+  return hasVagueLanguage && (!hasExplicitDeadline || !hasExplicitOwner || isVeryShort);
+}
+
 function firstWindow(text) {
   const match = text.match(/\bwithin\s+\d+\s+(?:minutes?|hours?|days?|business\s+days?)\b/i);
   return match ? match[0] : "Within stated policy SLA";
@@ -161,7 +175,7 @@ function mockResponse(prompt) {
   const policyText = String(input?.policy_text || "");
 
   const hasConflict = hasMockConflict(policyText);
-  const missingInfo = /Escalate referral concerns promptly/i.test(policyText);
+  const missingInfo = hasMissingContextSignals(policyText);
   const lowConfidence = hasConflict || missingInfo;
   const actions = buildMockActions(policyText, hasConflict, missingInfo);
 
