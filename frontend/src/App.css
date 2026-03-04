@@ -43,6 +43,19 @@ textarea,
   transition: all 0.15s ease;
 }
 
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.scenario-pill:focus-visible,
+.submit-btn:focus-visible,
+.retry-btn:focus-visible,
+.copy-error-btn:focus-visible,
+.audit-toggle:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
 .page {
   max-width: 1180px;
   margin: 0 auto;
@@ -130,6 +143,12 @@ textarea,
 
 .form-panel label {
   display: block;
+  margin-bottom: 12px;
+}
+
+.form-panel textarea,
+.form-panel input,
+.form-panel select {
   margin-bottom: 12px;
 }
 
@@ -439,45 +458,33 @@ select:focus {
   gap: 8px;
 }
 
-.loading-state p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.88rem;
-}
-
-.spinner {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid #d1d5db;
-  border-top-color: var(--teal);
-  animation: spin 0.9s linear infinite;
-}
-
-.skeleton-line {
-  height: 10px;
-  border-radius: 999px;
+.skeleton-block {
+  height: 16px;
+  border-radius: 8px;
   background: linear-gradient(90deg, #eceff1 25%, #f4f6f8 40%, #eceff1 60%);
   background-size: 300% 100%;
   animation: shimmer 1.2s infinite;
 }
 
-.skeleton-line.long {
-  width: 90%;
+.skeleton-block.large {
+  height: 58px;
+  width: 100%;
 }
 
-.skeleton-line.medium {
+.skeleton-block.long {
+  width: 95%;
+}
+
+.skeleton-block.medium {
   width: 70%;
+}
+
+.skeleton-block.short {
+  width: 45%;
 }
 
 .muted {
   color: var(--muted);
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @keyframes shimmer {
@@ -516,7 +523,42 @@ select:focus {
     -webkit-overflow-scrolling: touch;
   }
 
-  .metrics-grid {
+.metrics-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.error-actions {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.retry-btn {
+  border: 1px solid var(--teal);
+  color: var(--teal);
+  background: transparent;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retry-btn:hover {
+  background: #eef8f8;
+}
+
+.copy-error-btn {
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  text-decoration: underline;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.copy-error-btn:hover {
+  color: #374151;
 }

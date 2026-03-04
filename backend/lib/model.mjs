@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+export const MODEL_TIMEOUT_MESSAGE = "Model response timed out. Please try again.";
 
 function extractJson(text) {
   const trimmed = text.trim();
@@ -81,17 +82,33 @@ export async function generateWithGemini(prompt) {
   if (!apiKey) throw new Error("Missing GEMINI_API_KEY.");
 
   const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 8000);
   const client = new GoogleGenAI({ apiKey });
-  const response = await client.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      temperature: 0.2,
-      topP: 0.9,
-      maxOutputTokens: 1400,
-      responseMimeType: "application/json",
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response;
+  try {
+    response = await client.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        temperature: 0.2,
+        topP: 0.9,
+        maxOutputTokens: 1400,
+        responseMimeType: "application/json",
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const aborted = error?.name === "AbortError" || controller.signal.aborted;
+    if (aborted) {
+      throw new Error(MODEL_TIMEOUT_MESSAGE);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const text = response?.text;
   if (!text) throw new Error("Model returned empty response text.");

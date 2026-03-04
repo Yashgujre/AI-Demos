@@ -7,13 +7,46 @@ const SESSION_LIMIT = 3;
 const SESSION_KEY = "policy_copilot_runs";
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
-function getSessionRuns() {
-  const raw = sessionStorage.getItem(SESSION_KEY);
-  return raw ? Number(raw) || 0 : 0;
+let inMemorySessionRuns = 0;
+
+function readSessionRuns(storageKey: string) {
+  try {
+    const raw = sessionStorage.getItem(storageKey);
+    return raw ? Number(raw) || 0 : 0;
+  } catch {
+    return inMemorySessionRuns;
+  }
 }
 
-function setSessionRuns(count: number) {
-  sessionStorage.setItem(SESSION_KEY, String(count));
+function writeSessionRuns(storageKey: string, count: number) {
+  try {
+    sessionStorage.setItem(storageKey, String(count));
+  } catch {
+    inMemorySessionRuns = count;
+  }
+}
+
+function useSessionLimit(limit: number, storageKey: string) {
+  const [runs, setRuns] = useState(() => readSessionRuns(storageKey));
+
+  const setRunsSafely = (count: number) => {
+    setRuns(count);
+    writeSessionRuns(storageKey, count);
+  };
+
+  const increment = () => {
+    const next = runs + 1;
+    setRunsSafely(next);
+  };
+
+  const remainingRuns = Math.max(0, limit - runs);
+
+  return {
+    runs,
+    remainingRuns,
+    canRun: runs < limit,
+    increment,
+  };
 }
 
 const initialInput: InputPayload = {
@@ -33,11 +66,21 @@ export default function App() {
   const [result, setResult] = useState<OutputPayload | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(false);
-  const [runs, setRuns] = useState(getSessionRuns());
   const [activeScenario, setActiveScenario] = useState<string | null>(null);
   const [showAuditLog, setShowAuditLog] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
-  const remainingRuns = useMemo(() => Math.max(0, SESSION_LIMIT - runs), [runs]);
+  const { runs, remainingRuns, canRun, increment } = useSessionLimit(SESSION_LIMIT, SESSION_KEY);
+
+  const scenarioAriaMap = useMemo(
+    () => ({
+      "high-risk-escalation": "Load scenario 1: high-risk escalation policy sample",
+      "routine-update": "Load scenario 2: routine policy update sample",
+      "missing-context": "Load scenario 3: incomplete policy context sample",
+      "conflicting-clauses": "Load scenario 4: conflicting policy clauses sample",
+    }),
+    [],
+  );
 
   const loadScenario = (id: string) => {
     const scenario = scenarios.find((s) => s.id === id);
@@ -45,13 +88,13 @@ export default function App() {
     setForm(scenario.input);
     setActiveScenario(id);
     setShowAuditLog(false);
+    setCopyState("idle");
     setError(null);
     setResult(null);
   };
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (runs >= SESSION_LIMIT) {
+  const submitCurrentForm = async () => {
+    if (!canRun) {
       setError({
         error_code: "RATE_LIMITED",
         message: "Session run limit reached.",
@@ -62,6 +105,7 @@ export default function App() {
 
     setLoading(true);
     setShowAuditLog(false);
+    setCopyState("idle");
     setError(null);
     setResult(null);
 
@@ -80,9 +124,7 @@ export default function App() {
       }
 
       setResult(data as OutputPayload);
-      const next = runs + 1;
-      setRuns(next);
-      setSessionRuns(next);
+      increment();
     } catch (err) {
       setError({
         error_code: "MODEL_ERROR",
@@ -94,13 +136,28 @@ export default function App() {
     }
   };
 
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitCurrentForm();
+  };
+
+  const copyErrorDetails = async () => {
+    if (!error) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(error, null, 2));
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+  };
+
   return (
     <div className="page">
       <header className="hero">
         <p className="hero-pill">Healthcare Policy Copilot</p>
         <h1>Paste Any Policy. Get an Audit-Ready Action Plan in Seconds.</h1>
         <p className="hero-subtitle">
-          Public demo mode: {SESSION_LIMIT} runs per session. Remaining: {remainingRuns}
+          Public demo mode: {SESSION_LIMIT} runs per session. Used: {runs}. Remaining: {remainingRuns}
         </p>
       </header>
 
@@ -110,6 +167,7 @@ export default function App() {
             key={scenario.id}
             type="button"
             className={`scenario-pill ${activeScenario === scenario.id ? "active" : ""}`}
+            aria-label={scenarioAriaMap[scenario.id as keyof typeof scenarioAriaMap] || `Load ${scenario.label}`}
             onClick={() => loadScenario(scenario.id)}
           >
             {scenario.label}
@@ -121,85 +179,101 @@ export default function App() {
         <form className="panel form-panel" onSubmit={onSubmit}>
           <h2 className="panel-title">Input</h2>
 
-          <label>
+          <label htmlFor="policy-text-input">
             <span className="field-label">Policy / SOP Text</span>
-            <textarea
-              required
-              minLength={20}
-              value={form.policy_text}
-              onChange={(e) => {
-                setActiveScenario(null);
-                setForm({ ...form, policy_text: e.target.value });
-              }}
-            />
           </label>
+          <textarea
+            id="policy-text-input"
+            required
+            minLength={20}
+            value={form.policy_text}
+            onChange={(e) => {
+              setActiveScenario(null);
+              setForm({ ...form, policy_text: e.target.value });
+            }}
+          />
 
-          <label>
+          <label htmlFor="urgency-select">
             <span className="field-label">Urgency</span>
-            <select
-              value={form.urgency}
-              onChange={(e) => {
-                setActiveScenario(null);
-                setForm({ ...form, urgency: e.target.value as InputPayload["urgency"] });
-              }}
-            >
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-            </select>
           </label>
+          <select
+            id="urgency-select"
+            value={form.urgency}
+            onChange={(e) => {
+              setActiveScenario(null);
+              setForm({ ...form, urgency: e.target.value as InputPayload["urgency"] });
+            }}
+          >
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
 
-          <label>
+          <label htmlFor="org-context-input">
             <span className="field-label">Organization Context</span>
-            <input
-              required
-              value={form.organization_context}
-              onChange={(e) => {
-                setActiveScenario(null);
-                setForm({ ...form, organization_context: e.target.value });
-              }}
-            />
           </label>
+          <input
+            id="org-context-input"
+            required
+            value={form.organization_context}
+            onChange={(e) => {
+              setActiveScenario(null);
+              setForm({ ...form, organization_context: e.target.value });
+            }}
+          />
 
-          <label>
+          <label htmlFor="requester-role-select">
             <span className="field-label">Requester Role</span>
-            <select
-              value={form.requester_role}
-              onChange={(e) => {
-                setActiveScenario(null);
-                setForm({ ...form, requester_role: e.target.value as InputPayload["requester_role"] });
-              }}
-            >
-              <option>PM</option>
-              <option>Operations Manager</option>
-              <option>Compliance Lead</option>
-              <option>Analyst</option>
-            </select>
           </label>
+          <select
+            id="requester-role-select"
+            value={form.requester_role}
+            onChange={(e) => {
+              setActiveScenario(null);
+              setForm({ ...form, requester_role: e.target.value as InputPayload["requester_role"] });
+            }}
+          >
+            <option>PM</option>
+            <option>Operations Manager</option>
+            <option>Compliance Lead</option>
+            <option>Analyst</option>
+          </select>
 
-          <button className="submit-btn" type="submit" disabled={loading || remainingRuns <= 0}>
+          <button className="submit-btn" type="submit" disabled={loading || !canRun}>
             Generate Action Plan
           </button>
         </form>
 
-        <section className="panel output-panel">
+        <section className="panel output-panel" aria-live="polite" aria-busy={loading ? "true" : "false"}>
           <h2 className="panel-title">Output</h2>
 
           {loading && (
-            <div className="loading-state">
-              <div className="spinner" />
-              <p>Generating structured response...</p>
-              <div className="skeleton-line long" />
-              <div className="skeleton-line" />
-              <div className="skeleton-line medium" />
+            <div className="loading-state" aria-label="Generating action plan">
+              <div className="skeleton-block large" />
+              <div className="skeleton-block medium" />
+              <div className="skeleton-block long" />
+              <div className="skeleton-block short" />
+              <div className="skeleton-block medium" />
             </div>
           )}
 
           {!loading && error && (
-            <div className="error-block">
+            <div className="error-block" role="alert">
               <strong>{error.error_code}</strong>
               <p>{error.message}</p>
               {error.details ? <p className="error-details">{error.details}</p> : null}
+              <div className="error-actions">
+                <button className="retry-btn" type="button" onClick={() => void submitCurrentForm()}>
+                  Retry
+                </button>
+                <button className="copy-error-btn" type="button" onClick={() => void copyErrorDetails()}>
+                  {copyState === "copied"
+                    ? "Copied"
+                    : copyState === "failed"
+                      ? "Copy failed"
+                      : "Copy Error Details"}
+                </button>
+              </div>
             </div>
           )}
 
@@ -222,7 +296,11 @@ export default function App() {
                 <div className="metric-card">
                   <p className="section-label">Confidence</p>
                   <p className="confidence-value">{Math.round(result.confidence_score * 100)}%</p>
-                  <div className="confidence-track" role="progressbar" aria-valuenow={Math.round(result.confidence_score * 100)}>
+                  <div
+                    className="confidence-track"
+                    role="progressbar"
+                    aria-valuenow={Math.round(result.confidence_score * 100)}
+                  >
                     <div className="confidence-fill" style={{ width: `${Math.round(result.confidence_score * 100)}%` }} />
                   </div>
                 </div>

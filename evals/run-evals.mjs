@@ -2,7 +2,19 @@ import { performance } from "node:perf_hooks";
 import { scenarios } from "../shared/scenarios.mjs";
 import { OutputSchema } from "../shared/schema.mjs";
 
-process.env.MOCK_MODEL = process.env.MOCK_MODEL || "1";
+const isLiveMode = process.argv.includes("--live");
+const liveTimeoutMs = Number(process.env.EVAL_LIVE_TIMEOUT_MS || 10000);
+
+if (!isLiveMode) {
+  process.env.MOCK_MODEL = process.env.MOCK_MODEL || "1";
+} else {
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("Live eval mode requires GEMINI_API_KEY.");
+    process.exit(1);
+  }
+  process.env.MOCK_MODEL = "0";
+  process.env.GEMINI_TIMEOUT_MS = String(Number(process.env.GEMINI_TIMEOUT_MS || 15000));
+}
 
 const { processRequest } = await import("../backend/lib/service.mjs");
 
@@ -11,9 +23,16 @@ const results = [];
 for (const scenario of scenarios) {
   const start = performance.now();
   let output;
+  let modelOutputRaw = null;
   let error = null;
   try {
-    output = await processRequest(scenario.input);
+    if (isLiveMode) {
+      const liveResult = await processRequest(scenario.input, { includeRaw: true });
+      output = liveResult.output;
+      modelOutputRaw = liveResult.model_output_raw;
+    } else {
+      output = await processRequest(scenario.input);
+    }
   } catch (err) {
     error = String(err?.message || err);
   }
@@ -25,6 +44,7 @@ for (const scenario of scenarios) {
     missing_info_behavior: false,
     conflict_flag_behavior: false,
     confidence_behavior: false,
+    response_time_acceptable: true,
   };
 
   if (output) {
@@ -44,20 +64,34 @@ for (const scenario of scenarios) {
       : output.confidence_score >= 0.6;
   }
 
+  if (isLiveMode) {
+    checks.response_time_acceptable = elapsedMs <= liveTimeoutMs;
+  }
+
   const pass = !error && Object.values(checks).every(Boolean);
-  results.push({ id: scenario.id, pass, elapsedMs, checks, error });
+  results.push({
+    id: scenario.id,
+    pass,
+    elapsedMs,
+    checks,
+    error,
+    ...(isLiveMode ? { model_output_raw: modelOutputRaw } : {}),
+  });
 }
 
 const passed = results.filter((r) => r.pass).length;
 const avgLatency = Math.round(results.reduce((s, r) => s + r.elapsedMs, 0) / results.length);
 
-console.log("Policy-to-Action Copilot Eval Report");
+console.log(`Policy-to-Action Copilot Eval Report (${isLiveMode ? "live" : "mock"} mode)`);
 console.log("==================================");
 for (const r of results) {
   console.log(`- ${r.id}: ${r.pass ? "PASS" : "FAIL"} (${r.elapsedMs} ms)`);
   if (!r.pass) {
     console.log(`  error: ${r.error || "check failure"}`);
     console.log(`  checks: ${JSON.stringify(r.checks)}`);
+    if (isLiveMode && r.model_output_raw) {
+      console.log(`  model_output_raw: ${JSON.stringify(r.model_output_raw)}`);
+    }
   }
 }
 console.log("----------------------------------");

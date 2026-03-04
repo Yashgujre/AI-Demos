@@ -1,7 +1,7 @@
 import { ZodError } from "zod";
 import { InputSchema, OutputSchema } from "../../shared/schema.mjs";
 import { buildPrompt, buildCorrectionPrompt } from "./prompt.mjs";
-import { generateWithGemini } from "./model.mjs";
+import { generateWithGemini, MODEL_TIMEOUT_MESSAGE } from "./model.mjs";
 import { applyGuardrails } from "./guardrails.mjs";
 
 const OVERRIDE_LINE_PATTERNS = [
@@ -45,6 +45,10 @@ export function sanitizeInput(validInput) {
   };
 }
 
+function isTimeoutError(error) {
+  return String(error?.message || "").includes(MODEL_TIMEOUT_MESSAGE);
+}
+
 function zodIssues(error) {
   if (error instanceof ZodError) {
     return error.issues.map((i) => `${i.path.join(".") || "root"}: ${i.message}`).join("; ");
@@ -52,22 +56,43 @@ function zodIssues(error) {
   return String(error?.message || error);
 }
 
-export async function processRequest(input) {
+export async function processRequest(input, options = {}) {
   const validInput = InputSchema.parse(input);
   const sanitizedInput = sanitizeInput(validInput);
+  const includeRaw = options.includeRaw === true;
+  const rawOutputs = [];
 
   const firstPrompt = buildPrompt(sanitizedInput);
-  let raw = await generateWithGemini(firstPrompt);
+  let raw;
+  try {
+    raw = await generateWithGemini(firstPrompt);
+    if (includeRaw) rawOutputs.push(raw);
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new Error(MODEL_TIMEOUT_MESSAGE);
+    }
+    throw error;
+  }
 
   try {
     const parsed = parseJson(raw);
     const validated = OutputSchema.parse(parsed);
-    return applyGuardrails(sanitizedInput, validated);
+    const output = applyGuardrails(sanitizedInput, validated);
+    return includeRaw ? { output, model_output_raw: rawOutputs } : output;
   } catch (err) {
     const correctionPrompt = buildCorrectionPrompt(sanitizedInput, raw, zodIssues(err));
-    raw = await generateWithGemini(correctionPrompt);
+    try {
+      raw = await generateWithGemini(correctionPrompt);
+      if (includeRaw) rawOutputs.push(raw);
+    } catch (error) {
+      if (isTimeoutError(error)) {
+        throw new Error(MODEL_TIMEOUT_MESSAGE);
+      }
+      throw error;
+    }
     const parsedRetry = parseJson(raw);
     const validatedRetry = OutputSchema.parse(parsedRetry);
-    return applyGuardrails(sanitizedInput, validatedRetry);
+    const outputRetry = applyGuardrails(sanitizedInput, validatedRetry);
+    return includeRaw ? { output: outputRetry, model_output_raw: rawOutputs } : outputRetry;
   }
 }

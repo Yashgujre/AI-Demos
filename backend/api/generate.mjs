@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { processRequest } from "../lib/service.mjs";
 import { checkIpRateLimit } from "../lib/rate-limit.mjs";
+import { MODEL_TIMEOUT_MESSAGE } from "../lib/model.mjs";
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
@@ -97,7 +98,10 @@ export default async function handler(req, res) {
       500,
       {
         error_code: "MODEL_ERROR",
-        message: "Failed to generate action plan.",
+        message:
+          String(error?.message || "").includes(MODEL_TIMEOUT_MESSAGE)
+            ? MODEL_TIMEOUT_MESSAGE
+            : "Failed to generate action plan.",
         details: String(error?.message || error),
       },
       origin,
