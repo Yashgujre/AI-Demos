@@ -158,3 +158,4 @@ Checks include:
 - [System Documentation](./docs/SYSTEM_DOCUMENTATION.md)
 - [Architecture Notes](./docs/ARCHITECTURE.md)
 - [Demo Script](./docs/DEMO_SCRIPT.md)
+- [End-to-End Build Blog](./docs/BLOG_IDEATION_TO_LAUNCH.md)
