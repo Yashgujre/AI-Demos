@@ -24,12 +24,18 @@ const initialInput: InputPayload = {
   requester_role: "PM",
 };
 
+function priorityLabel(priority: OutputPayload["priority_level"]) {
+  return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
 export default function App() {
   const [form, setForm] = useState<InputPayload>(initialInput);
   const [result, setResult] = useState<OutputPayload | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(false);
   const [runs, setRuns] = useState(getSessionRuns());
+  const [activeScenario, setActiveScenario] = useState<string | null>(null);
+  const [showAuditLog, setShowAuditLog] = useState(false);
 
   const remainingRuns = useMemo(() => Math.max(0, SESSION_LIMIT - runs), [runs]);
 
@@ -37,6 +43,8 @@ export default function App() {
     const scenario = scenarios.find((s) => s.id === id);
     if (!scenario) return;
     setForm(scenario.input);
+    setActiveScenario(id);
+    setShowAuditLog(false);
     setError(null);
     setResult(null);
   };
@@ -53,6 +61,7 @@ export default function App() {
     }
 
     setLoading(true);
+    setShowAuditLog(false);
     setError(null);
     setResult(null);
 
@@ -88,39 +97,52 @@ export default function App() {
   return (
     <div className="page">
       <header className="hero">
-        <p className="badge">Healthcare Policy Copilot</p>
+        <p className="hero-pill">Healthcare Policy Copilot</p>
         <h1>Paste Any Policy. Get an Audit-Ready Action Plan in Seconds.</h1>
-        <p>
-          Public demo mode: <strong>{SESSION_LIMIT}</strong> runs per session.
-          {" "}
-          Remaining: <strong>{remainingRuns}</strong>
+        <p className="hero-subtitle">
+          Public demo mode: {SESSION_LIMIT} runs per session. Remaining: {remainingRuns}
         </p>
       </header>
 
-      <section className="scenario-bar">
+      <section className="scenario-bar" aria-label="Demo scenarios">
         {scenarios.map((scenario) => (
-          <button key={scenario.id} type="button" onClick={() => loadScenario(scenario.id)}>
+          <button
+            key={scenario.id}
+            type="button"
+            className={`scenario-pill ${activeScenario === scenario.id ? "active" : ""}`}
+            onClick={() => loadScenario(scenario.id)}
+          >
             {scenario.label}
           </button>
         ))}
       </section>
 
       <main className="layout">
-        <form className="card" onSubmit={onSubmit}>
-          <h2>Input</h2>
+        <form className="panel form-panel" onSubmit={onSubmit}>
+          <h2 className="panel-title">Input</h2>
+
           <label>
-            Policy / SOP Text
+            <span className="field-label">Policy / SOP Text</span>
             <textarea
               required
               minLength={20}
               value={form.policy_text}
-              onChange={(e) => setForm({ ...form, policy_text: e.target.value })}
+              onChange={(e) => {
+                setActiveScenario(null);
+                setForm({ ...form, policy_text: e.target.value });
+              }}
             />
           </label>
 
           <label>
-            Urgency
-            <select value={form.urgency} onChange={(e) => setForm({ ...form, urgency: e.target.value as InputPayload["urgency"] })}>
+            <span className="field-label">Urgency</span>
+            <select
+              value={form.urgency}
+              onChange={(e) => {
+                setActiveScenario(null);
+                setForm({ ...form, urgency: e.target.value as InputPayload["urgency"] });
+              }}
+            >
               <option value="low">low</option>
               <option value="medium">medium</option>
               <option value="high">high</option>
@@ -128,19 +150,25 @@ export default function App() {
           </label>
 
           <label>
-            Organization Context
+            <span className="field-label">Organization Context</span>
             <input
               required
               value={form.organization_context}
-              onChange={(e) => setForm({ ...form, organization_context: e.target.value })}
+              onChange={(e) => {
+                setActiveScenario(null);
+                setForm({ ...form, organization_context: e.target.value });
+              }}
             />
           </label>
 
           <label>
-            Requester Role
+            <span className="field-label">Requester Role</span>
             <select
               value={form.requester_role}
-              onChange={(e) => setForm({ ...form, requester_role: e.target.value as InputPayload["requester_role"] })}
+              onChange={(e) => {
+                setActiveScenario(null);
+                setForm({ ...form, requester_role: e.target.value as InputPayload["requester_role"] });
+              }}
             >
               <option>PM</option>
               <option>Operations Manager</option>
@@ -149,70 +177,112 @@ export default function App() {
             </select>
           </label>
 
-          <button type="submit" disabled={loading || remainingRuns <= 0}>
-            {loading ? "Generating..." : "Generate Action Plan"}
+          <button className="submit-btn" type="submit" disabled={loading || remainingRuns <= 0}>
+            Generate Action Plan
           </button>
         </form>
 
-        <section className="card output">
-          <h2>Output</h2>
+        <section className="panel output-panel">
+          <h2 className="panel-title">Output</h2>
 
-          {error && (
-            <div className="error">
-              <strong>{error.error_code}</strong>: {error.message}
-              {error.details ? <p>{error.details}</p> : null}
+          {loading && (
+            <div className="loading-state">
+              <div className="spinner" />
+              <p>Generating structured response...</p>
+              <div className="skeleton-line long" />
+              <div className="skeleton-line" />
+              <div className="skeleton-line medium" />
             </div>
           )}
 
-          {!error && !result && <p>No output yet. Load a scenario or paste policy text and run.</p>}
+          {!loading && error && (
+            <div className="error-block">
+              <strong>{error.error_code}</strong>
+              <p>{error.message}</p>
+              {error.details ? <p className="error-details">{error.details}</p> : null}
+            </div>
+          )}
 
-          {result && (
+          {!loading && !error && !result && (
+            <p className="muted">No output yet. Load a scenario or paste policy text and run.</p>
+          )}
+
+          {!loading && result && (
             <>
-              <p><strong>Summary:</strong> {result.summary}</p>
-              <p>
-                <strong>Priority:</strong> {result.priority_level} | <strong>Confidence:</strong>{" "}
-                {result.confidence_score.toFixed(2)}
-              </p>
+              <div className="summary-banner">{result.summary}</div>
 
-              <h3>Prioritized Actions</h3>
-              <ul>
+              <div className="metrics-grid">
+                <div className="metric-card">
+                  <p className="section-label">Priority</p>
+                  <span className={`priority-pill priority-${result.priority_level}`}>
+                    {priorityLabel(result.priority_level)}
+                  </span>
+                </div>
+
+                <div className="metric-card">
+                  <p className="section-label">Confidence</p>
+                  <p className="confidence-value">{Math.round(result.confidence_score * 100)}%</p>
+                  <div className="confidence-track" role="progressbar" aria-valuenow={Math.round(result.confidence_score * 100)}>
+                    <div className="confidence-fill" style={{ width: `${Math.round(result.confidence_score * 100)}%` }} />
+                  </div>
+                </div>
+              </div>
+
+              <p className="section-label">Actions</p>
+              <div className="actions-list">
                 {result.actions.map((action, idx) => (
-                  <li key={`${action.step}-${idx}`}>
-                    <strong>{action.step}</strong> ({action.owner_role}, {action.due_window}) - {action.reason}
-                  </li>
+                  <article className="action-card" key={`${action.step}-${idx}`}>
+                    <div className="step-index">{idx + 1}</div>
+                    <div className="step-content">
+                      <p className="step-title">{action.step}</p>
+                      <div className="step-tags">
+                        <span>{action.owner_role}</span>
+                        <span>{action.due_window}</span>
+                      </div>
+                      <p className="step-reason">{action.reason}</p>
+                    </div>
+                  </article>
                 ))}
-              </ul>
+              </div>
 
-              <h3>Compliance Flags</h3>
+              <p className="section-label">Compliance Flags</p>
               {result.compliance_flags.length === 0 ? (
-                <p>No compliance flags.</p>
+                <p className="muted">No compliance flags detected.</p>
               ) : (
-                <ul>
+                <div className="flag-list">
                   {result.compliance_flags.map((flag, idx) => (
-                    <li key={`${flag.flag}-${idx}`}>
-                      <strong>{flag.severity.toUpperCase()}</strong> - {flag.flag}: {flag.evidence}
-                    </li>
+                    <article className={`flag-item severity-${flag.severity}`} key={`${flag.flag}-${idx}`}>
+                      <p className="flag-title">{flag.flag}</p>
+                      <p>{flag.evidence}</p>
+                    </article>
                   ))}
-                </ul>
+                </div>
               )}
 
-              <h3>Missing Information</h3>
-              {result.missing_information.length === 0 ? (
-                <p>None identified.</p>
-              ) : (
-                <ul>
-                  {result.missing_information.map((item, idx) => (
-                    <li key={`${item}-${idx}`}>{item}</li>
-                  ))}
-                </ul>
+              {result.missing_information.length > 0 && (
+                <>
+                  <p className="section-label">Missing Information</p>
+                  <div className="missing-callout">
+                    <ul>
+                      {result.missing_information.map((item, idx) => (
+                        <li key={`${item}-${idx}`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
               )}
 
-              <h3>Stakeholder Update Draft</h3>
-              <p>{result.stakeholder_update_draft}</p>
+              <p className="section-label">Stakeholder Update Draft</p>
+              <blockquote className="draft-block">{result.stakeholder_update_draft}</blockquote>
 
-              <h3>Audit Log</h3>
-              <p><strong>Constraints:</strong> {result.audit_log.policy_constraints_detected.join("; ") || "None"}</p>
-              <p><strong>Assumptions:</strong> {result.audit_log.assumptions_made.join("; ") || "None"}</p>
+              <button className="audit-toggle" type="button" onClick={() => setShowAuditLog((prev) => !prev)}>
+                {showAuditLog ? "Hide Audit Log" : "Show Audit Log"}
+              </button>
+              {showAuditLog && (
+                <div className="audit-log">
+                  <pre>{JSON.stringify(result.audit_log, null, 2)}</pre>
+                </div>
+              )}
             </>
           )}
         </section>
